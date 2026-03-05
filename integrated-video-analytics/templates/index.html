@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Video Analytics Workspace</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+
+        .metric-card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-2px);
+            border-color: #475569;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+        }
+
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .video-container {
+            background-color: #000;
+            border-radius: 0.75rem;
+            overflow: hidden;
+            border: 1px solid #334155;
+            position: relative;
+            min-height: 500px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .video-feed {
+            width: 100%;
+            height: auto;
+            max-height: 75vh;
+            object-fit: contain;
+        }
+
+        /* Custom Scrollbar for logs */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen flex flex-col">
+
+    <!-- Navbar -->
+    <nav class="bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
+        <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-3">
+                    <div
+                        class="w-8 h-8 rounded bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-lg">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z">
+                            </path>
+                        </svg>
+                    </div>
+                    <span class="font-bold text-xl tracking-tight text-white">CyberShield Analytics</span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <span
+                        class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700">
+                        <span class="relative flex h-2.5 w-2.5">
+                            <span
+                                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        </span>
+                        System Active
+                    </span>
+                    <label
+                        class="cursor-pointer bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm text-white font-medium transition-colors border border-blue-500 shadow-lg shadow-blue-500/20">
+                        Upload Source Video
+                        <input type="file" id="videoFileInput" accept="video/mp4,video/x-m4v,video/*" class="hidden" />
+                    </label>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+        <!-- Live Metrics Bar -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div class="metric-card">
+                <p class="text-sm font-medium text-slate-400 mb-1">Total Vehicles</p>
+                <div class="flex items-end justify-between">
+                    <span class="metric-value text-blue-400" id="vehicleCount">0</span>
+                    <svg class="w-8 h-8 text-slate-600 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                            d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+                    </svg>
+                </div>
+            </div>
+            <div class="metric-card">
+                <p class="text-sm font-medium text-slate-400 mb-1">Crowd Density</p>
+                <div class="flex items-end justify-between">
+                    <span class="metric-value text-emerald-400" id="peopleCount">0</span>
+                    <svg class="w-8 h-8 text-slate-600 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z">
+                        </path>
+                    </svg>
+                </div>
+            </div>
+            <div class="metric-card">
+                <p class="text-sm font-medium text-slate-400 mb-1">Faces Analyzed</p>
+                <div class="flex items-end justify-between">
+                    <span class="metric-value text-purple-400" id="faceCount">0</span>
+                    <svg class="w-8 h-8 text-slate-600 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                            d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z">
+                        </path>
+                    </svg>
+                </div>
+            </div>
+            <div class="metric-card">
+                <p class="text-sm font-medium text-slate-400 mb-1">Plates Logged</p>
+                <div class="flex items-end justify-between">
+                    <span class="metric-value text-amber-400" id="plateCount">0</span>
+                    <svg class="w-8 h-8 text-slate-600 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                            d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2">
+                        </path>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 h-full">
+
+            <!-- Video & Charts Section (Takes 2/3 width on large screens) -->
+            <div class="xl:col-span-2 flex flex-col gap-6">
+                <!-- Video Player -->
+                <div class="bg-slate-800 rounded-xl border border-slate-700 p-2 shadow-xl">
+                    <div class="video-container group">
+                        <img id="videoPlayer" src="" class="video-feed hidden" alt="Video Stream" />
+
+                        <!-- Placeholder -->
+                        <div id="videoPlaceholder" class="text-center text-slate-500 flex flex-col items-center p-12">
+                            <svg class="w-16 h-16 mb-4 opacity-30" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
+                                    d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z">
+                                </path>
+                            </svg>
+                            <h3 class="text-xl font-medium text-slate-300">Awaiting Video Stream</h3>
+                            <p class="text-sm mt-2 max-w-sm">Upload an MP4 file from the top right button to begin the
+                                AI analysis pipeline.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Analysis Charts -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6">
+                    <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 shadow-xl">
+                        <h3 class="text-sm font-semibold text-slate-300 mb-4 tracking-wide uppercase">Vehicle
+                            Classification</h3>
+                        <div class="relative h-48 w-full">
+                            <canvas id="vehicleChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 shadow-xl">
+                        <h3 class="text-sm font-semibold text-slate-300 mb-4 tracking-wide uppercase">Crowd Demographics
+                        </h3>
+                        <div class="relative h-48 w-full">
+                            <canvas id="genderChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Intelligent Event Log Sidebar -->
+            <div
+                class="bg-slate-800 rounded-xl border border-slate-700 flex flex-col shadow-xl max-h-[850px] overflow-hidden">
+                <div
+                    class="p-4 border-b border-slate-700 bg-slate-800/80 backdrop-blur z-10 flex justify-between items-center">
+                    <h2 class="text-sm font-semibold text-slate-200 tracking-wide uppercase flex items-center gap-2">
+                        <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                            </path>
+                        </svg>
+                        Searchable System Logs
+                    </h2>
+                    <span
+                        class="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-1 rounded">Live</span>
+                </div>
+
+                <div class="p-4 bg-slate-900/50 border-b border-slate-700">
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                            </svg>
+                        </div>
+                        <input type="text" id="logSearch" placeholder="Search plates or faces..."
+                            class="block w-full pl-9 pr-3 py-2 border border-slate-700 rounded-md leading-5 bg-slate-800 text-slate-300 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    </div>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-4 space-y-3" id="logContainer">
+                    <!-- Logs injected via JS -->
+                    <div class="flex flex-col items-center justify-center h-full text-slate-500 opacity-70">
+                        <svg class="w-10 h-10 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <p class="text-sm">Awaiting surveillance events...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Setup Charts
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.font.family = 'Inter';
+
+        const vehicleCtx = document.getElementById('vehicleChart').getContext('2d');
+        const vehicleChart = new Chart(vehicleCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Car', 'Motorcycle', 'Bus', 'Truck'],
+                datasets: [{
+                    label: 'Classified Vehicles',
+                    data: [0, 0, 0, 0],
+                    backgroundColor: ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b'],
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, grid: { color: '#334155' } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+
+        const genderCtx = document.getElementById('genderChart').getContext('2d');
+        const genderChart = new Chart(genderCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Male', 'Female'],
+                datasets: [{
+                    data: [0, 0],
+                    backgroundColor: ['#3b82f6', '#ec4899'],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '70%',
+                plugins: {
+                    legend: { position: 'right' }
+                }
+            }
+        });
+
+        let previouslyDrawnLogs = new Set();
+        let searchFilter = "";
+
+        // Search Input listener
+        document.getElementById('logSearch').addEventListener('input', (e) => {
+            searchFilter = e.target.value.toLowerCase();
+            renderLogs(window.lastLogs || []);
+        });
+
+        // Polling Data
+        setInterval(async () => {
+            try {
+                const res = await fetch('/api/analytics/status');
+                const data = await res.json();
+
+                // Update Top Cards
+                document.getElementById('vehicleCount').innerText = data.vehicle_count;
+                document.getElementById('peopleCount').innerText = data.people_count;
+                document.getElementById('faceCount').innerText = data.faces_detected;
+                document.getElementById('plateCount').innerText = data.plates_detected;
+
+                // Update Charts
+                vehicleChart.data.datasets[0].data = [
+                    data.vehicle_types.car || 0,
+                    data.vehicle_types.motorcycle || 0,
+                    data.vehicle_types.bus || 0,
+                    data.vehicle_types.truck || 0
+                ];
+                vehicleChart.update();
+
+                // Assuming DeepFace returns Woman / Man
+                genderChart.data.datasets[0].data = [
+                    data.gender_stats.Man || 0,
+                    data.gender_stats.Woman || 0
+                ];
+                genderChart.update();
+
+                // Process Logs
+                window.lastLogs = data.event_logs;
+                renderLogs(data.event_logs);
+
+            } catch (err) {
+                console.error("Fetch err", err);
+            }
+        }, 1000);
+
+        function renderLogs(logs) {
+            const container = document.getElementById('logContainer');
+
+            if (logs.length > 0 && container.innerHTML.includes("Awaiting surveillance events")) {
+                container.innerHTML = '';
+            }
+
+            let html = '';
+            logs.forEach(log => {
+                // Search filter check
+                const logText = `${log.type} ${log.detail}`.toLowerCase();
+                if (searchFilter && !logText.includes(searchFilter)) return;
+
+                let icon = '';
+                let colorClass = '';
+
+                if (log.type === 'ANPR Match') {
+                    icon = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2"></path></svg>';
+                    colorClass = 'text-amber-400 bg-amber-400/10 border-amber-400/20';
+                } else {
+                    icon = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+                    colorClass = 'text-purple-400 bg-purple-400/10 border-purple-400/20';
+                }
+
+                html += `
+                    <div class="px-3 py-2.5 rounded-lg border ${colorClass} text-sm flex gap-3 transition-colors">
+                        <div class="mt-0.5">${icon}</div>
+                        <div class="flex-1">
+                            <div class="flex justify-between items-start mb-0.5">
+                                <span class="font-semibold text-slate-200">${log.type}</span>
+                                <span class="text-xs text-slate-500 font-mono">${log.time}</span>
+                            </div>
+                            <p class="text-slate-400 leading-snug">${log.detail}</p>
+                        </div>
+                    </div>
+                `;
+            });
+
+            if (html !== '') {
+                container.innerHTML = html;
+            }
+        }
+
+        // Upload Handlers
+        document.getElementById('videoFileInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/api/video/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    document.getElementById('videoPlayer').src = '/api/video/stream';
+                    document.getElementById('videoPlayer').classList.remove('hidden');
+                    document.getElementById('videoPlaceholder').classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Error uploading video:', error);
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,22 @@
+fastapi
+uvicorn
+python-multipart
+opencv-python
+torch
+torchvision
+numpy
+pandas
+requests
+Pillow
+deepface
+tf-keras
+easyocr
+# YOLOv5 requirements
+matplotlib>=3.3.0
+pyyaml>=5.3.1
+scipy>=1.4.1
+tqdm>=4.64.0
+psutil
+PyYAML
+seaborn>=0.11.0
+requests>=2.23.0
