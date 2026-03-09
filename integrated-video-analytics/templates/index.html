@@ -1,56 +1,74 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Video Analytics Workspace</title>
+    <title>CyberShield AI Video Analytics</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --panel: rgba(10, 18, 32, 0.86);
+            --border: rgba(96, 165, 250, 0.18);
+            --text: #edf2ff;
+        }
+
         body {
-            font-family: 'Inter', sans-serif;
-            background-color: #0f172a;
-            color: #f8fafc;
+            font-family: 'IBM Plex Sans', sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(59, 130, 246, 0.18), transparent 32%),
+                radial-gradient(circle at top right, rgba(20, 184, 166, 0.16), transparent 26%),
+                linear-gradient(180deg, #07101d 0%, #0a1426 52%, #070d18 100%);
+            color: var(--text);
+        }
+
+        h1, h2, h3, h4, .display-font {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .glass-panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            box-shadow: 0 22px 55px rgba(3, 9, 20, 0.44);
+            backdrop-filter: blur(14px);
         }
 
         .metric-card {
-            background-color: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 0.75rem;
-            padding: 1.5rem;
-            transition: all 0.2s ease-in-out;
+            position: relative;
+            overflow: hidden;
+            border-radius: 1rem;
+            padding: 1.2rem;
+            background: linear-gradient(180deg, rgba(15, 26, 47, 0.95), rgba(9, 17, 31, 0.95));
+            border: 1px solid rgba(96, 165, 250, 0.12);
         }
 
-        .metric-card:hover {
-            transform: translateY(-2px);
-            border-color: #475569;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+        .metric-card::after {
+            content: "";
+            position: absolute;
+            inset: auto -18% -55% auto;
+            width: 7rem;
+            height: 7rem;
+            border-radius: 999px;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.24), transparent 70%);
         }
 
         .metric-value {
-            font-size: 2.5rem;
-            font-weight: 700;
+            font-size: 2rem;
             line-height: 1;
+            font-weight: 700;
         }
 
-        .gradient-text {
-            background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .video-container {
-            background-color: #000;
-            border-radius: 0.75rem;
+        .video-shell {
+            min-height: 480px;
+            border-radius: 1.2rem;
             overflow: hidden;
-            border: 1px solid #334155;
-            position: relative;
-            min-height: 500px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            border: 1px solid rgba(96, 165, 250, 0.14);
+            background:
+                radial-gradient(circle at center, rgba(59, 130, 246, 0.12), transparent 55%),
+                #02070f;
         }
 
         .video-feed {
@@ -60,384 +78,577 @@
             object-fit: contain;
         }
 
-        /* Custom Scrollbar for logs */
+        .table-shell {
+            max-height: 280px;
+            overflow-y: auto;
+        }
+
+        .record-row {
+            display: grid;
+            gap: 0.4rem;
+            padding: 0.8rem 0;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+        }
+
+        .record-row:last-child {
+            border-bottom: none;
+        }
+
         ::-webkit-scrollbar {
             width: 6px;
+            height: 6px;
         }
 
         ::-webkit-scrollbar-track {
-            background: #1e293b;
-            border-radius: 4px;
+            background: rgba(15, 23, 42, 0.7);
         }
 
         ::-webkit-scrollbar-thumb {
-            background: #475569;
-            border-radius: 4px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: #64748b;
+            background: rgba(96, 165, 250, 0.45);
+            border-radius: 999px;
         }
     </style>
 </head>
-
-<body class="min-h-screen flex flex-col">
-
-    <!-- Navbar -->
-    <nav class="bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
-        <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
-                <div class="flex items-center gap-3">
-                    <div
-                        class="w-8 h-8 rounded bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-lg">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z">
-                            </path>
-                        </svg>
-                    </div>
-                    <span class="font-bold text-xl tracking-tight text-white">CyberShield Analytics</span>
+<body class="min-h-screen">
+    <nav class="sticky top-0 z-50 border-b border-slate-800/80 bg-slate-950/75 backdrop-blur-xl">
+        <div class="mx-auto flex max-w-[1700px] flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+            <div class="flex items-center gap-4">
+                <div class="flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-400/30 bg-blue-500/15 text-blue-300 shadow-lg shadow-blue-500/10">
+                    <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 7l9-4 9 4-9 4-9-4zm0 5l9 4 9-4m-18 5l9 4 9-4"></path>
+                    </svg>
                 </div>
-                <div class="flex items-center gap-4">
-                    <span
-                        class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700">
-                        <span class="relative flex h-2.5 w-2.5" id="statusIndicatorPing">
-                            <span
-                                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"
-                                id="statusIndicatorColor"></span>
+                <div>
+                    <p class="display-font text-xl font-bold tracking-tight">CyberShield Analytics</p>
+                    <p class="text-sm text-slate-400">Integrated vehicle, ANPR, face and crowd intelligence</p>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-sm text-emerald-200">
+                    <span class="inline-flex items-center gap-2">
+                        <span class="relative flex h-2.5 w-2.5">
+                            <span id="statusIndicatorPing" class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70 hidden"></span>
+                            <span id="statusIndicatorColor" class="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-500"></span>
                         </span>
-                        <span id="systemStatusText">System Active</span>
+                        <span id="systemStatusText">Awaiting Source</span>
                     </span>
-                    <a href="/api/reports/download" target="_blank"
-                        class="cursor-pointer bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded text-sm text-white font-medium transition-colors border border-slate-600 shadow-lg">
-                        Download Report
-                    </a>
-                    <label
-                        class="cursor-pointer bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm text-white font-medium transition-colors border border-blue-500 shadow-lg shadow-blue-500/20">
-                        Upload Source Video
-                        <input type="file" id="videoFileInput" accept="video/mp4,video/x-m4v,video/*" class="hidden" />
-                    </label>
                 </div>
+
+                <a id="reportLink" href="#" target="_blank" class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-2 text-sm font-medium text-white transition hover:border-slate-500 hover:bg-slate-700">
+                    Download Report
+                </a>
+
+                <select id="cameraSelector" class="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
+                    <option value="">Select Camera...</option>
+                </select>
+
+                <button onclick="document.getElementById('addCameraModal').classList.remove('hidden')" class="rounded-xl border border-blue-500 bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-blue-500/20 transition hover:bg-blue-500">
+                    Add Source
+                </button>
+
+                <input type="file" id="videoFileInput" accept="video/mp4,video/x-m4v,video/*" class="hidden">
             </div>
         </div>
     </nav>
 
-    <!-- Main Content -->
-    <main class="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div id="addCameraModal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm">
+        <div class="glass-panel w-full max-w-md rounded-3xl p-6">
+            <h3 class="display-font text-xl font-bold text-white">Add Video Source</h3>
+            <p class="mt-1 text-sm text-slate-400">Use a camera ID, RTSP stream, webcam index, or upload a file.</p>
 
-        <!-- Live Metrics Bar -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div class="metric-card">
-                <p class="text-sm font-medium text-slate-400 mb-1">Total Vehicles</p>
-                <div class="flex items-end justify-between">
-                    <span class="metric-value text-blue-400" id="vehicleCount">0</span>
-                    <svg class="w-8 h-8 text-slate-600 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                            d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
-                    </svg>
+            <div class="mt-5 space-y-4">
+                <div>
+                    <label class="mb-1 block text-sm text-slate-300">Camera ID</label>
+                    <input id="newCamId" type="text" placeholder="gate_north" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm text-slate-300">Source</label>
+                    <input id="newCamSource" type="text" placeholder="rtsp://..., webcam index 0, or URL" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none">
                 </div>
             </div>
-            <div class="metric-card">
-                <p class="text-sm font-medium text-slate-400 mb-1">Crowd Density</p>
-                <div class="flex items-end justify-between">
-                    <span class="metric-value text-emerald-400" id="peopleCount">0</span>
-                    <svg class="w-8 h-8 text-slate-600 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z">
-                        </path>
-                    </svg>
-                </div>
-            </div>
-            <div class="metric-card">
-                <p class="text-sm font-medium text-slate-400 mb-1">Faces Analyzed</p>
-                <div class="flex items-end justify-between">
-                    <span class="metric-value text-purple-400" id="faceCount">0</span>
-                    <svg class="w-8 h-8 text-slate-600 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                            d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z">
-                        </path>
-                    </svg>
-                </div>
-            </div>
-            <div class="metric-card">
-                <p class="text-sm font-medium text-slate-400 mb-1">Plates Logged</p>
-                <div class="flex items-end justify-between">
-                    <span class="metric-value text-amber-400" id="plateCount">0</span>
-                    <svg class="w-8 h-8 text-slate-600 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                            d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2">
-                        </path>
-                    </svg>
-                </div>
+
+            <div class="my-4 text-center text-sm text-slate-500">or</div>
+
+            <button onclick="document.getElementById('videoFileInput').click()" class="w-full rounded-xl border border-slate-600 bg-slate-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700">
+                Upload Video File
+            </button>
+
+            <div class="mt-6 flex justify-end gap-3">
+                <button onclick="document.getElementById('addCameraModal').classList.add('hidden')" class="rounded-xl px-4 py-2 text-sm text-slate-400 transition hover:text-white">
+                    Cancel
+                </button>
+                <button onclick="submitNewCamera()" class="rounded-xl border border-blue-500 bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500">
+                    Save Camera
+                </button>
             </div>
         </div>
+    </div>
 
-        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 h-full">
+    <main class="mx-auto max-w-[1700px] px-4 py-6">
+        <section class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+            <div class="metric-card">
+                <p class="text-sm uppercase tracking-[0.2em] text-slate-400">Vehicles In Frame</p>
+                <p id="vehicleCount" class="metric-value mt-3 text-blue-300">0</p>
+            </div>
+            <div class="metric-card">
+                <p class="text-sm uppercase tracking-[0.2em] text-slate-400">Vehicles Recorded</p>
+                <p id="vehicleTotalCount" class="metric-value mt-3 text-cyan-300">0</p>
+            </div>
+            <div class="metric-card">
+                <p class="text-sm uppercase tracking-[0.2em] text-slate-400">People In Frame</p>
+                <p id="peopleCount" class="metric-value mt-3 text-emerald-300">0</p>
+            </div>
+            <div class="metric-card">
+                <p class="text-sm uppercase tracking-[0.2em] text-slate-400">Crowd Density</p>
+                <p id="crowdDensity" class="metric-value mt-3 text-teal-300">Low</p>
+            </div>
+            <div class="metric-card">
+                <p class="text-sm uppercase tracking-[0.2em] text-slate-400">Faces Analyzed</p>
+                <p id="faceCount" class="metric-value mt-3 text-fuchsia-300">0</p>
+            </div>
+            <div class="metric-card">
+                <p class="text-sm uppercase tracking-[0.2em] text-slate-400">Plates Logged</p>
+                <p id="plateCount" class="metric-value mt-3 text-amber-300">0</p>
+            </div>
+        </section>
 
-            <!-- Video & Charts Section (Takes 2/3 width on large screens) -->
-            <div class="xl:col-span-2 flex flex-col gap-6">
-                <!-- Video Player -->
-                <div class="bg-slate-800 rounded-xl border border-slate-700 p-2 shadow-xl">
-                    <div class="video-container group">
-                        <img id="videoPlayer" src="" class="video-feed hidden" alt="Video Stream" />
-
-                        <!-- Placeholder -->
-                        <div id="videoPlaceholder" class="text-center text-slate-500 flex flex-col items-center p-12">
-                            <svg class="w-16 h-16 mb-4 opacity-30" fill="none" stroke="currentColor"
-                                viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
-                                    d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z">
-                                </path>
-                            </svg>
-                            <h3 class="text-xl font-medium text-slate-300">Awaiting Video Stream</h3>
-                            <p class="text-sm mt-2 max-w-sm">Upload an MP4 file from the top right button to begin the
-                                AI analysis pipeline.</p>
+        <section class="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-12">
+            <div class="xl:col-span-8 flex flex-col gap-6">
+                <div class="glass-panel rounded-[1.4rem] p-3">
+                    <div class="video-shell flex items-center justify-center">
+                        <img id="videoPlayer" src="" class="video-feed hidden" alt="Video Stream">
+                        <div id="videoPlaceholder" class="flex flex-col items-center px-8 py-16 text-center text-slate-400">
+                            <div class="mb-4 rounded-full border border-blue-400/20 bg-blue-500/10 p-4 text-blue-300">
+                                <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.55-2.28A1 1 0 0121 8.62v6.76a1 1 0 01-1.45.89L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                                </svg>
+                            </div>
+                            <h2 class="display-font text-2xl font-bold text-white">No active source</h2>
+                            <p class="mt-2 max-w-md text-sm text-slate-400">Upload a recorded stream or connect a live feed to start the integrated analytics pipeline.</p>
                         </div>
                     </div>
                 </div>
-
-                <!-- Analysis Charts -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6">
-                    <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 shadow-xl">
-                        <h3 class="text-sm font-semibold text-slate-300 mb-4 tracking-wide uppercase">Vehicle
-                            Classification</h3>
-                        <div class="relative h-48 w-full">
+                <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <div class="glass-panel rounded-[1.4rem] p-5">
+                        <div class="mb-4">
+                            <h3 class="display-font text-lg font-bold text-white">Vehicle Classification</h3>
+                            <p class="text-sm text-slate-400">Session totals by tracked vehicle type</p>
+                        </div>
+                        <div class="h-56">
                             <canvas id="vehicleChart"></canvas>
                         </div>
                     </div>
 
-                    <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 shadow-xl">
-                        <h3 class="text-sm font-semibold text-slate-300 mb-4 tracking-wide uppercase">Crowd Demographics
-                        </h3>
-                        <div class="relative h-48 w-full">
+                    <div class="glass-panel rounded-[1.4rem] p-5">
+                        <div class="mb-4">
+                            <h3 class="display-font text-lg font-bold text-white">Gender Analytics</h3>
+                            <p class="text-sm text-slate-400">Unique analyzed faces over the session</p>
+                        </div>
+                        <div class="h-56">
                             <canvas id="genderChart"></canvas>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Intelligent Event Log Sidebar -->
-            <div
-                class="bg-slate-800 rounded-xl border border-slate-700 flex flex-col shadow-xl max-h-[850px] overflow-hidden">
-                <div
-                    class="p-4 border-b border-slate-700 bg-slate-800/80 backdrop-blur z-10 flex justify-between items-center">
-                    <h2 class="text-sm font-semibold text-slate-200 tracking-wide uppercase flex items-center gap-2">
-                        <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
-                            </path>
-                        </svg>
-                        Searchable System Logs
-                    </h2>
-                    <span
-                        class="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-1 rounded">Live</span>
-                </div>
-
-                <div class="p-4 bg-slate-900/50 border-b border-slate-700">
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                            </svg>
+                <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <div class="glass-panel rounded-[1.4rem] p-5">
+                        <div class="mb-4 flex items-start justify-between gap-3">
+                            <div>
+                                <h3 class="display-font text-lg font-bold text-white">Recent ANPR Records</h3>
+                                <p class="text-sm text-slate-400">Searchable license plate history</p>
+                            </div>
+                            <input id="plateSearch" type="text" placeholder="Search plate..." class="w-40 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none">
                         </div>
-                        <input type="text" id="logSearch" placeholder="Search plates or faces..."
-                            class="block w-full pl-9 pr-3 py-2 border border-slate-700 rounded-md leading-5 bg-slate-800 text-slate-300 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        <div id="plateRecords" class="table-shell text-sm text-slate-300"></div>
                     </div>
-                </div>
 
-                <div class="flex-1 overflow-y-auto p-4 space-y-3" id="logContainer">
-                    <!-- Logs injected via JS -->
-                    <div class="flex flex-col items-center justify-center h-full text-slate-500 opacity-70">
-                        <svg class="w-10 h-10 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
-                        <p class="text-sm">Awaiting surveillance events...</p>
+                    <div class="glass-panel rounded-[1.4rem] p-5">
+                        <div class="mb-4 flex items-start justify-between gap-3">
+                            <div>
+                                <h3 class="display-font text-lg font-bold text-white">Recent Face Records</h3>
+                                <p class="text-sm text-slate-400">Watchlist hits and demographic analytics</p>
+                            </div>
+                            <input id="faceSearch" type="text" placeholder="Search identity..." class="w-40 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none">
+                        </div>
+                        <div id="faceRecords" class="table-shell text-sm text-slate-300"></div>
                     </div>
                 </div>
             </div>
-        </div>
+
+            <aside class="glass-panel rounded-[1.4rem] xl:col-span-4 flex max-h-[1200px] flex-col overflow-hidden">
+                <div class="border-b border-slate-800 px-5 py-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <h3 class="display-font text-lg font-bold text-white">System Event Log</h3>
+                            <p class="text-sm text-slate-400">Search traffic, ANPR and face analytics events</p>
+                        </div>
+                        <span class="rounded-full border border-indigo-500/30 bg-indigo-500/15 px-3 py-1 text-xs text-indigo-200">Live</span>
+                    </div>
+                    <div class="mt-4">
+                        <input id="logSearch" type="text" placeholder="Search logs, plates, identities..." class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none">
+                    </div>
+                </div>
+                <div id="logContainer" class="flex-1 overflow-y-auto px-5 py-4">
+                    <div class="flex h-full flex-col items-center justify-center text-center text-slate-500">
+                        <p class="display-font text-lg text-slate-300">No events yet</p>
+                        <p class="mt-2 text-sm text-slate-500">Start a camera source to populate the live event stream.</p>
+                    </div>
+                </div>
+            </aside>
+        </section>
     </main>
 
     <script>
-        // Setup Charts
-        Chart.defaults.color = '#94a3b8';
-        Chart.defaults.font.family = 'Inter';
+        Chart.defaults.color = '#93a4c3';
+        Chart.defaults.font.family = 'IBM Plex Sans';
 
-        const vehicleCtx = document.getElementById('vehicleChart').getContext('2d');
-        const vehicleChart = new Chart(vehicleCtx, {
+        const vehicleChart = new Chart(document.getElementById('vehicleChart'), {
             type: 'bar',
             data: {
                 labels: ['Car', 'Motorcycle', 'Bus', 'Truck'],
                 datasets: [{
-                    label: 'Classified Vehicles',
                     data: [0, 0, 0, 0],
-                    backgroundColor: ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b'],
-                    borderRadius: 4,
+                    backgroundColor: ['#60a5fa', '#22d3ee', '#34d399', '#fbbf24'],
+                    borderRadius: 8,
+                    borderSkipped: false
                 }]
             },
             options: {
-                responsive: true,
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: {
-                    y: { beginAtZero: true, grid: { color: '#334155' } },
-                    x: { grid: { display: false } }
+                    x: { grid: { display: false } },
+                    y: { beginAtZero: true, grid: { color: 'rgba(148, 163, 184, 0.12)' } }
                 }
             }
         });
 
-        const genderCtx = document.getElementById('genderChart').getContext('2d');
-        const genderChart = new Chart(genderCtx, {
+        const genderChart = new Chart(document.getElementById('genderChart'), {
             type: 'doughnut',
             data: {
-                labels: ['Male', 'Female'],
+                labels: ['Man', 'Woman', 'Unknown'],
                 datasets: [{
-                    data: [0, 0],
-                    backgroundColor: ['#3b82f6', '#ec4899'],
-                    borderWidth: 0,
-                    hoverOffset: 4
+                    data: [0, 0, 0],
+                    backgroundColor: ['#3b82f6', '#f472b6', '#64748b'],
+                    borderWidth: 0
                 }]
             },
             options: {
-                responsive: true,
                 maintainAspectRatio: false,
-                cutout: '70%',
-                plugins: {
-                    legend: { position: 'right' }
-                }
+                cutout: '68%',
+                plugins: { legend: { position: 'right' } }
             }
         });
 
-        let previouslyDrawnLogs = new Set();
-        let searchFilter = "";
+        let activeCamera = '';
+        let ws = null;
+        let isSearchingLogs = false;
+        let isSearchingPlates = false;
+        let isSearchingFaces = false;
+        let lastLiveLogs = [];
 
-        // Search Input listener
-        document.getElementById('logSearch').addEventListener('input', (e) => {
-            searchFilter = e.target.value.toLowerCase();
-            renderLogs(window.lastLogs || []);
-        });
+        const statusColor = document.getElementById('statusIndicatorColor');
+        const statusPing = document.getElementById('statusIndicatorPing');
+        const statusText = document.getElementById('systemStatusText');
+        const reportLink = document.getElementById('reportLink');
+        const cameraSelector = document.getElementById('cameraSelector');
 
-        // WebSocket Connection
-        function connectWebSocket() {
-            const ws = new WebSocket(`ws://${location.host}/ws/analytics`);
-
-            ws.onopen = () => {
-                document.getElementById('statusIndicatorColor').classList.replace('bg-rose-500', 'bg-emerald-500');
-                document.getElementById('statusIndicatorPing').classList.remove('hidden');
-                document.getElementById('systemStatusText').innerText = "System Active";
-            };
-
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-
-                // Update Top Cards
-                document.getElementById('vehicleCount').innerText = data.vehicle_count;
-                document.getElementById('peopleCount').innerText = data.people_count;
-                document.getElementById('faceCount').innerText = data.faces_detected;
-                document.getElementById('plateCount').innerText = data.plates_detected;
-
-                // Update Charts
-                vehicleChart.data.datasets[0].data = [
-                    data.vehicle_types.car || 0,
-                    data.vehicle_types.motorcycle || 0,
-                    data.vehicle_types.bus || 0,
-                    data.vehicle_types.truck || 0
-                ];
-                vehicleChart.update();
-
-                // Assuming DeepFace returns Woman / Man
-                genderChart.data.datasets[0].data = [
-                    data.gender_stats.Man || 0,
-                    data.gender_stats.Woman || 0
-                ];
-                genderChart.update();
-
-                // Process Logs
-                window.lastLogs = data.event_logs;
-                renderLogs(data.event_logs);
-            };
-
-            ws.onclose = () => {
-                document.getElementById('statusIndicatorColor').classList.replace('bg-emerald-500', 'bg-rose-500');
-                document.getElementById('statusIndicatorPing').classList.add('hidden');
-                document.getElementById('systemStatusText').innerText = "Connection Lost";
-                setTimeout(connectWebSocket, 3000); // Reconnect loop
-            };
+        function setSystemStatus(text, connected = false) {
+            statusText.textContent = text;
+            statusColor.classList.toggle('bg-emerald-500', connected);
+            statusColor.classList.toggle('bg-rose-500', !connected);
+            statusPing.classList.toggle('hidden', !connected);
         }
 
-        // Initialize WebSocket
-        connectWebSocket();
+        function updateReportLink() {
+            reportLink.href = activeCamera ? `/api/reports/download?camera_id=${encodeURIComponent(activeCamera)}` : '#';
+        }
+
+        function addCameraToDropdown(cameraId, selectIt = false) {
+            let option = Array.from(cameraSelector.options).find(item => item.value === cameraId);
+            if (!option) {
+                option = document.createElement('option');
+                option.value = cameraId;
+                option.textContent = cameraId;
+                cameraSelector.appendChild(option);
+            }
+            if (selectIt) {
+                cameraSelector.value = cameraId;
+                switchCamera(cameraId);
+            }
+        }
+
+        function renderEmptyState(containerId, title, detail) {
+            document.getElementById(containerId).innerHTML = `
+                <div class="flex h-full min-h-[180px] flex-col items-center justify-center text-center text-slate-500">
+                    <p class="display-font text-base text-slate-300">${title}</p>
+                    <p class="mt-2 text-sm text-slate-500">${detail}</p>
+                </div>
+            `;
+        }
 
         function renderLogs(logs) {
             const container = document.getElementById('logContainer');
-
-            if (logs.length > 0 && container.innerHTML.includes("Awaiting surveillance events")) {
-                container.innerHTML = '';
+            if (!logs || logs.length === 0) {
+                renderEmptyState('logContainer', 'No events found', 'The log will populate once the pipeline emits analytics events.');
+                return;
             }
-
-            let html = '';
-            logs.forEach(log => {
-                // Search filter check
-                const logText = `${log.type} ${log.detail}`.toLowerCase();
-                if (searchFilter && !logText.includes(searchFilter)) return;
-
-                let icon = '';
-                let colorClass = '';
-
+            container.innerHTML = logs.map(log => {
+                let colorClass = 'border-purple-400/20 bg-purple-400/10 text-purple-300';
                 if (log.type === 'ANPR Match') {
-                    icon = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2"></path></svg>';
-                    colorClass = 'text-amber-400 bg-amber-400/10 border-amber-400/20';
-                } else {
-                    icon = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
-                    colorClass = 'text-purple-400 bg-purple-400/10 border-purple-400/20';
+                    colorClass = 'border-amber-400/20 bg-amber-400/10 text-amber-300';
+                } else if (log.type === 'Watchlist Alert') {
+                    colorClass = 'border-red-500/20 bg-red-500/10 text-red-300';
                 }
-
-                html += `
-                    <div class="px-3 py-2.5 rounded-lg border ${colorClass} text-sm flex gap-3 transition-colors">
-                        <div class="mt-0.5">${icon}</div>
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start mb-0.5">
-                                <span class="font-semibold text-slate-200">${log.type}</span>
-                                <span class="text-xs text-slate-500 font-mono">${log.time}</span>
-                            </div>
-                            <p class="text-slate-400 leading-snug">${log.detail}</p>
+                const timeText = (log.time || '').includes(' ') ? log.time.split(' ')[1] : (log.time || '');
+                return `
+                    <div class="mb-3 rounded-2xl border ${colorClass} p-3">
+                        <div class="mb-1 flex items-start justify-between gap-3">
+                            <span class="font-semibold text-white">${log.type}</span>
+                            <span class="text-xs text-slate-400">${timeText}</span>
                         </div>
+                        <p class="text-sm text-slate-300">${log.detail}</p>
                     </div>
                 `;
-            });
+            }).join('');
+        }
 
-            if (html !== '') {
-                container.innerHTML = html;
+        function renderPlateRecords(records) {
+            const container = document.getElementById('plateRecords');
+            if (!records || records.length === 0) {
+                renderEmptyState('plateRecords', 'No plate records', 'Detected number plates will appear here and remain searchable.');
+                return;
+            }
+            container.innerHTML = records.map(record => `
+                <div class="record-row">
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="display-font text-base font-bold text-amber-300">${record.plate_text}</span>
+                        <span class="rounded-full border border-amber-400/20 bg-amber-400/10 px-2 py-1 text-xs text-amber-200">${record.vehicle_type}</span>
+                    </div>
+                    <div class="text-xs text-slate-400">Last seen: ${record.last_seen || record.time || 'N/A'}</div>
+                </div>
+            `).join('');
+        }
+
+        function renderFaceRecords(records) {
+            const container = document.getElementById('faceRecords');
+            if (!records || records.length === 0) {
+                renderEmptyState('faceRecords', 'No face records', 'Watchlist matches and face analytics results will appear here.');
+                return;
+            }
+            container.innerHTML = records.map(record => {
+                const watchlist = record.watchlist_hit ? 'Watchlist Hit' : 'Anonymous';
+                const identity = record.identity || 'Anonymous';
+                const badgeClass = record.watchlist_hit
+                    ? 'border-red-500/20 bg-red-500/10 text-red-200'
+                    : 'border-fuchsia-400/20 bg-fuchsia-400/10 text-fuchsia-200';
+                return `
+                    <div class="record-row">
+                        <div class="flex items-center justify-between gap-3">
+                            <span class="display-font text-base font-bold text-white">${identity}</span>
+                            <span class="rounded-full border px-2 py-1 text-xs ${badgeClass}">${watchlist}</span>
+                        </div>
+                        <div class="text-sm text-slate-300">${record.gender || 'Unknown'}</div>
+                        <div class="text-xs text-slate-400">Last seen: ${record.last_seen || record.time || 'N/A'}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function fetchJSON(url) {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Request failed: ${response.status}`);
+            }
+            return response.json();
+        }
+
+        async function loadCameras() {
+            try {
+                const data = await fetchJSON('/api/cameras');
+                data.cameras.forEach(camera => addCameraToDropdown(camera.camera_id));
+                if (!activeCamera && data.cameras.length > 0) {
+                    switchCamera(data.cameras[0].camera_id);
+                }
+            } catch (error) {
+                console.error('Failed to load cameras', error);
             }
         }
 
-        // Upload Handlers
-        document.getElementById('videoFileInput').addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
+        async function fetchHistoricalLogs(query = '') {
+            const params = new URLSearchParams();
+            if (query) params.set('query', query);
+            if (activeCamera) params.set('camera_id', activeCamera);
+            const data = await fetchJSON(`/api/logs/history?${params.toString()}`);
+            renderLogs(data.logs);
+        }
 
+        async function fetchPlateHistory(query = '') {
+            const params = new URLSearchParams();
+            params.set('limit', '25');
+            if (query) params.set('query', query);
+            if (activeCamera) params.set('camera_id', activeCamera);
+            const data = await fetchJSON(`/api/records/plates?${params.toString()}`);
+            renderPlateRecords(data.records);
+        }
+
+        async function fetchFaceHistory(query = '') {
+            const params = new URLSearchParams();
+            params.set('limit', '25');
+            if (query) params.set('query', query);
+            if (activeCamera) params.set('camera_id', activeCamera);
+            const data = await fetchJSON(`/api/records/faces?${params.toString()}`);
+            renderFaceRecords(data.records);
+        }
+
+        function updateDashboard(state) {
+            document.getElementById('vehicleCount').textContent = state.vehicle_count || 0;
+            document.getElementById('vehicleTotalCount').textContent = state.vehicle_total_count || 0;
+            document.getElementById('peopleCount').textContent = state.people_count || 0;
+            document.getElementById('crowdDensity').textContent = state.crowd_density || 'Low';
+            document.getElementById('faceCount').textContent = state.faces_detected || 0;
+            document.getElementById('plateCount').textContent = state.plates_detected || 0;
+            vehicleChart.data.datasets[0].data = [
+                state.vehicle_types?.car || 0,
+                state.vehicle_types?.motorcycle || 0,
+                state.vehicle_types?.bus || 0,
+                state.vehicle_types?.truck || 0
+            ];
+            vehicleChart.update();
+            genderChart.data.datasets[0].data = [
+                state.gender_stats?.Man || 0,
+                state.gender_stats?.Woman || 0,
+                state.gender_stats?.Unknown || 0
+            ];
+            genderChart.update();
+            if (!isSearchingPlates) {
+                renderPlateRecords(state.recent_plates || []);
+            }
+            if (!isSearchingFaces) {
+                renderFaceRecords(state.recent_faces || []);
+            }
+            if (!isSearchingLogs && JSON.stringify(lastLiveLogs) !== JSON.stringify(state.event_logs || [])) {
+                lastLiveLogs = state.event_logs || [];
+                renderLogs(lastLiveLogs);
+            }
+        }
+
+        function connectWebSocket(cameraId) {
+            if (ws) {
+                ws.close();
+            }
+            if (!cameraId) {
+                setSystemStatus('Awaiting Source', false);
+                return;
+            }
+            const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+            ws = new WebSocket(`${protocol}://${location.host}/ws/analytics/${cameraId}`);
+            ws.onopen = () => setSystemStatus(`Streaming ${cameraId}`, true);
+            ws.onmessage = event => updateDashboard(JSON.parse(event.data));
+            ws.onclose = () => setSystemStatus('Connection Lost', false);
+            ws.onerror = () => setSystemStatus('Connection Error', false);
+        }
+
+        function switchCamera(cameraId) {
+            activeCamera = cameraId;
+            updateReportLink();
+            connectWebSocket(cameraId);
+            document.getElementById('videoPlayer').src = `/api/video/stream/${cameraId}`;
+            document.getElementById('videoPlayer').classList.remove('hidden');
+            document.getElementById('videoPlaceholder').classList.add('hidden');
+            fetchHistoricalLogs(document.getElementById('logSearch').value.trim()).catch(console.error);
+            fetchPlateHistory(document.getElementById('plateSearch').value.trim()).catch(console.error);
+            fetchFaceHistory(document.getElementById('faceSearch').value.trim()).catch(console.error);
+        }
+
+        cameraSelector.addEventListener('change', event => {
+            if (event.target.value) {
+                switchCamera(event.target.value);
+            }
+        });
+
+        async function submitNewCamera() {
+            const cameraId = document.getElementById('newCamId').value.trim();
+            const source = document.getElementById('newCamSource').value.trim();
+            if (!cameraId || !source) {
+                alert('Provide both camera ID and source.');
+                return;
+            }
+            try {
+                const response = await fetch(`/api/cameras/add?camera_id=${encodeURIComponent(cameraId)}&source=${encodeURIComponent(source)}`, {
+                    method: 'POST'
+                });
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.detail || 'Failed to add camera');
+                }
+                addCameraToDropdown(payload.camera_id, true);
+                document.getElementById('addCameraModal').classList.add('hidden');
+                document.getElementById('newCamId').value = '';
+                document.getElementById('newCamSource').value = '';
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        document.getElementById('videoFileInput').addEventListener('change', async event => {
+            const file = event.target.files[0];
+            if (!file) return;
+            document.getElementById('addCameraModal').classList.add('hidden');
             const formData = new FormData();
             formData.append('file', file);
-
             try {
                 const response = await fetch('/api/video/upload', {
                     method: 'POST',
                     body: formData
                 });
-
-                if (response.ok) {
-                    document.getElementById('videoPlayer').src = '/api/video/stream';
-                    document.getElementById('videoPlayer').classList.remove('hidden');
-                    document.getElementById('videoPlaceholder').classList.add('hidden');
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.detail || 'Upload failed');
                 }
+                addCameraToDropdown(payload.camera_id, true);
             } catch (error) {
-                console.error('Error uploading video:', error);
+                alert(error.message);
+            } finally {
+                event.target.value = '';
             }
         });
+
+        let logTimeout;
+        document.getElementById('logSearch').addEventListener('input', event => {
+            const query = event.target.value.trim();
+            isSearchingLogs = query.length > 0;
+            clearTimeout(logTimeout);
+            logTimeout = setTimeout(() => {
+                fetchHistoricalLogs(query).catch(console.error);
+            }, 250);
+        });
+
+        let plateTimeout;
+        document.getElementById('plateSearch').addEventListener('input', event => {
+            const query = event.target.value.trim();
+            isSearchingPlates = query.length > 0;
+            clearTimeout(plateTimeout);
+            plateTimeout = setTimeout(() => {
+                fetchPlateHistory(query).catch(console.error);
+            }, 250);
+        });
+
+        let faceTimeout;
+        document.getElementById('faceSearch').addEventListener('input', event => {
+            const query = event.target.value.trim();
+            isSearchingFaces = query.length > 0;
+            clearTimeout(faceTimeout);
+            faceTimeout = setTimeout(() => {
+                fetchFaceHistory(query).catch(console.error);
+            }, 250);
+        });
+
+        renderEmptyState('plateRecords', 'No plate records', 'Detected number plates will appear here and remain searchable.');
+        renderEmptyState('faceRecords', 'No face records', 'Watchlist matches and face analytics results will appear here.');
+        updateReportLink();
+        loadCameras();
     </script>
 </body>
-
 </html>

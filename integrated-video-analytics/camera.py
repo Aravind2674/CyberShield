@@ -1,37 +1,74 @@
-import cv2
+from __future__ import annotations
+
 import threading
+from typing import Any
+
+import cv2
+
 
 class CameraStream:
-    """Threaded RTSP/camera capture to prevent frame drops."""
-    def __init__(self, source):
-        self.source = source
-        self.cap = cv2.VideoCapture(source)
+    """Handle both live sources and uploaded video files with predictable frame reads."""
+
+    def __init__(self, source: Any):
+        self.source = self._normalize_source(source)
+        self.cap = cv2.VideoCapture(self.source)
         if not self.cap.isOpened():
             raise ValueError(f"Could not open video source {source}")
-            
-        self.ret, self.frame = self.cap.read()
-        self.running = True
-        
-        # Start daemon thread strictly for reading frames
-        self.thread = threading.Thread(target=self._update, daemon=True)
-        self.thread.start()
 
-    def _update(self):
+        self.is_live = self._is_live_source(self.source)
+        if self.is_live:
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+        self.ret, self.frame = self.cap.read()
+        self.running = bool(self.ret)
+        self._pending_first_frame = bool(self.ret)
+        self.thread: threading.Thread | None = None
+
+        if self.is_live:
+            self.thread = threading.Thread(target=self._update_live, daemon=True)
+            self.thread.start()
+
+    @staticmethod
+    def _normalize_source(source: Any) -> Any:
+        if isinstance(source, str) and source.isdigit():
+            return int(source)
+        return source
+
+    @staticmethod
+    def _is_live_source(source: Any) -> bool:
+        if isinstance(source, int):
+            return True
+        source_str = str(source).lower()
+        return source_str.startswith("rtsp://") or source_str.startswith("http://") or source_str.startswith("https://")
+
+    def _update_live(self) -> None:
         while self.running:
-            # We don't process here, we just continually read to flush the buffer
-            # and prevent the stream from backing up (latency issue in RTSP)
-            cap_ret, cap_frame = self.cap.read()
-            if cap_ret:
-                self.ret = cap_ret
-                self.frame = cap_frame
+            ret, frame = self.cap.read()
+            if ret:
+                self.ret = ret
+                self.frame = frame
             else:
                 self.running = False
 
     def read(self):
-        # Always return the freshest frame
+        if not self.running:
+            return False, None
+
+        if self.is_live:
+            return self.ret, self.frame
+
+        if self._pending_first_frame:
+            self._pending_first_frame = False
+            return self.ret, self.frame
+
+        self.ret, self.frame = self.cap.read()
+        if not self.ret:
+            self.running = False
+            return False, None
         return self.ret, self.frame
 
-    def release(self):
+    def release(self) -> None:
         self.running = False
-        self.thread.join(timeout=1.0)
+        if self.thread is not None:
+            self.thread.join(timeout=1.0)
         self.cap.release()
