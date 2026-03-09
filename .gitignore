@@ -1,0 +1,38 @@
+# IDE / Editor
+.vscode/
+.idea/
+
+# Downloaded Repos
+AI-Surveillance-System-main/
+DeepCamera-master/
+FaceDetect-master/
+Intelligent-Video-Surveillance-main/
+deepface-master/
+face_recognition-master/
+openalpr-master/
+video-analyzer-main/
+yolov5-master/
+
+# Docs and large files
+ai-facial-recognition.pdf
+*.mp4
+*.pt
+*.onnx
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+
+# Logs and Temp
+logs/
+*.log
+.DS_Store

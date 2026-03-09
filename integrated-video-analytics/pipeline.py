@@ -4,6 +4,8 @@ import numpy as np
 import time
 from deepface import DeepFace
 import easyocr
+import supervision as sv
+from database import log_event
 
 class VideoPipeline:
     def __init__(self):
@@ -13,6 +15,15 @@ class VideoPipeline:
         self.model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True).to(self.device)
         self.model.eval()
         print(f"YOLOv5 model loaded on {self.device}")
+        
+        # Load dedicated Plate YOLO model (Ultralytics v8 fallback to standard repo approach if needed)
+        try:
+            from ultralytics import YOLO
+            self.plate_model = YOLO("keremberke/yolov8m-license-plate") # Or download a specific .pt
+            print("Loaded YOLO plate model")
+        except:
+            self.plate_model = None
+            print("Could not load yolov8 plate model, will fallback to heuristic cropping")
 
         # Initialize EasyOCR for Number Plates
         print("Loading EasyOCR...")
@@ -22,7 +33,6 @@ class VideoPipeline:
         # Load Haar Cascade for quick face detection before passing to DeepFace
         self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
-        # COCO labels for categories we care about
         self.target_classes = {
             0: 'person',
             2: 'car',
@@ -30,6 +40,26 @@ class VideoPipeline:
             5: 'bus',
             7: 'truck'
         }
+        
+        # Supervision initialization
+        self.tracker = sv.ByteTrack()
+        self.box_annotator = sv.BoxAnnotator(thickness=2)
+        self.label_annotator = sv.LabelAnnotator()
+        self.heat_annotator = sv.HeatMapAnnotator()
+        
+        # We define a polygon zone. In real use cases, this should be configurable.
+        # For now, let's just make a generic zone covering the lower half of a 1080p frame, scaled properly.
+        # We will initialize it with a dummy resolution (e.g., 1920x1080)
+        self.zone_polygon = np.array([
+            [0, 540],
+            [1920, 540],
+            [1920, 1080],
+            [0, 1080]
+        ])
+        self.zone = sv.PolygonZone(polygon=self.zone_polygon, triggering_anchors=(sv.Position.CENTER,))
+        self.zone_annotator = sv.PolygonZoneAnnotator(zone=self.zone, color=sv.Color.BLUE)
+        self.tracked_vehicles = set()
+        self.tracked_people = set()
 
     def process_frame(self, frame, analytics_state):
         # Convert BGR (OpenCV) to RGB
@@ -38,51 +68,70 @@ class VideoPipeline:
         # Inference
         results = self.model([img_rgb], size=640)
         
-        # Parse results
-        detections = results.xyxy[0].cpu().numpy() # xmin, ymin, xmax, ymax, confidence, class
+        # Supervision parsing
+        detections = sv.Detections.from_yolov5(results)
         
-        current_frame_people = 0
-        current_frame_vehicles = 0
-
-        for *box, conf, cls in detections:
-            cls = int(cls)
-            if cls in self.target_classes and conf > 0.4:
-                label = self.target_classes[cls]
-                x1, y1, x2, y2 = map(int, box)
+        # Filter detections for target classes
+        target_ids = list(self.target_classes.keys())
+        detections = detections[np.isin(detections.class_id, target_ids) & (detections.confidence > 0.4)]
+        
+        # Track
+        detections = self.tracker.update_with_detections(detections)
+        
+        # Update zone counts
+        zone_trigger = self.zone.trigger(detections=detections)
+        
+        # Draw Heatmap & Zone
+        frame = self.heat_annotator.annotate(scene=frame, detections=detections)
+        frame = self.zone_annotator.annotate(scene=frame)
+        
+        labels = []
+        for box, mask, confidence, class_id, tracker_id, data in detections:
+            class_name = self.target_classes[class_id]
+            labels.append(f"#{tracker_id} {class_name} {confidence:.2f}")
+            
+            x1, y1, x2, y2 = map(int, box)
+            
+            if class_name == 'person':
+                self.tracked_people.add(tracker_id)
+            else:
+                self.tracked_vehicles.add(tracker_id)
+                if class_name in analytics_state['vehicle_types'] and tracker_id not in self.tracked_vehicles:
+                    # Increment specific type only once per ID
+                    analytics_state['vehicle_types'][class_name] += 1
                 
-                # Draw Box
-                if label == 'person':
-                    color = (0, 255, 0) # Green for people
-                    current_frame_people += 1
-                else:
-                    color = (0, 0, 255) # Red for vehicles
-                    current_frame_vehicles += 1
-                    
-                    if label in analytics_state['vehicle_types']:
-                        analytics_state['vehicle_types'][label] += 1
-                    
-                    # Number Plate Recognition (Improved Accuracy)
-                    # We only process if the vehicle bounding box is decently sized to ensure readability
-                    if conf > 0.5 and (y2 - y1) > 60 and (x2 - x1) > 60:
-                        # Try only processing the bottom 40% of the vehicle to isolate the plate
-                        h = y2 - y1
-                        plate_y1 = int(y1 + (h * 0.6))
-                        vehicle_crop = frame[plate_y1:y2, x1:x2] # Use BGR for cv2 processing
-                        
+                # Number Plate Recognition on Vehicles
+                if confidence > 0.5 and (y2 - y1) > 60 and (x2 - x1) > 60:
+                    # Random skip to avoid lag
+                    if np.random.rand() < 0.2:
                         try:
-                            # Preprocess the crop to improve OCR accuracy
-                            gray_crop = cv2.cvtColor(vehicle_crop, cv2.COLOR_BGR2GRAY)
-                            # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
+                            vehicle_crop = frame[y1:y2, x1:x2]
+                            plates_regions = []
+                            
+                            # Use dedicated plate model if available
+                            if self.plate_model is not None:
+                                plate_results = self.plate_model(vehicle_crop, verbose=False)
+                                for p_det in plate_results[0].boxes:
+                                    if p_det.conf > 0.4:
+                                        px1, py1, px2, py2 = map(int, p_det.xyxy[0])
+                                        plates_regions.append(vehicle_crop[py1:py2, px1:px2])
+                            
+                            # Fallback heuristics if model failed or missing
+                            if not plates_regions:
+                                h = y2 - y1
+                                plate_y1 = int(y1 + (h * 0.6))
+                                plates_regions.append(frame[plate_y1:y2, x1:x2])
+                                
+                            for p_crop in plates_regions:
+                                gray_crop = cv2.cvtColor(p_crop, cv2.COLOR_BGR2GRAY)
                             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
                             enhanced_crop = clahe.apply(gray_crop)
                             
-                            results = self.reader.readtext(enhanced_crop)
-                            for (bbox, text, prob) in results:
-                                # Clean the text
+                            ocr_results = self.reader.readtext(enhanced_crop)
+                            for (bbox, text, prob) in ocr_results:
                                 clean_text = "".join(e for e in text if e.isalnum()).upper()
                                 
                                 if prob > 0.45 and len(clean_text) >= 5:
-                                    # Deduplication: check if we recently saw this exact plate
                                     is_duplicate = False
                                     for log in analytics_state['event_logs'][:15]:
                                         if log['type'] == 'ANPR Match' and clean_text in log['detail']:
@@ -91,26 +140,30 @@ class VideoPipeline:
                                             
                                     if not is_duplicate:
                                         analytics_state['plates_detected'] += 1
-                                        
-                                        # Add to searchable event logs
                                         timestamp = time.strftime("%H:%M:%S")
+                                        
+                                        detail = f"Plate '{clean_text}' on {class_name} #{tracker_id}"
+                                        
                                         analytics_state['event_logs'].insert(0, {
                                             "time": timestamp,
                                             "type": "ANPR Match",
-                                            "detail": f"Plate '{clean_text}' recognized on {label}"
+                                            "detail": detail
                                         })
+                                        # Persist to database
+                                        log_event("ANPR Match", detail)
                                         
                                     cv2.putText(frame, clean_text, (x1, y1 - 25), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
                         except Exception as e:
                             pass
-                
-                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                cv2.putText(frame, f'{label} {conf:.2f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+        
+        # Annotate Boxes
+        frame = self.box_annotator.annotate(scene=frame, detections=detections)
+        frame = self.label_annotator.annotate(scene=frame, detections=detections, labels=labels)
 
-        # Update global state counts (naive approach for a single frame, 
-        # normally you'd use a tracker like SORT/DeepSORT for unique counts)
-        analytics_state['vehicle_count'] = current_frame_vehicles
-        analytics_state['people_count'] = current_frame_people
+        # Update global state counts properly with tracked IDs
+        analytics_state['vehicle_count'] = len(self.tracked_vehicles)
+        analytics_state['people_count'] = len(self.tracked_people)
+        analytics_state['zone_count'] = int(zone_trigger.sum())
         
         # Face Detection & Gender Analysis
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -125,7 +178,21 @@ class VideoPipeline:
             if np.random.rand() < 0.05: # Sample 5% of frames for DeepFace
                 try:
                     face_roi = img_rgb[y:y+h, x:x+w]
-                    analysis = DeepFace.analyze(face_roi, actions=['gender', 'age'], enforce_detection=False)
+                    
+                    # 1. Watchlist matching
+                    match_name = None
+                    try:
+                        matches = DeepFace.find(face_roi, db_path='watchlist', enforce_detection=False, silent=True)
+                        if len(matches) > 0 and len(matches[0]) > 0:
+                            # Parse identity from path, assuming watchlist/Name.jpg
+                            import os
+                            identity_path = matches[0].iloc[0]['identity']
+                            match_name = os.path.basename(identity_path).split('.')[0]
+                    except Exception as e:
+                        pass
+                    
+                    # 2. Demographic analysis
+                    analysis = DeepFace.analyze(face_roi, actions=['gender', 'age'], enforce_detection=False, silent=True)
                     gender = analysis[0]['dominant_gender']
                     age = analysis[0]['age']
                     
@@ -134,13 +201,28 @@ class VideoPipeline:
                         
                     # Add to searchable event logs
                     timestamp = time.strftime("%H:%M:%S")
-                    analytics_state['event_logs'].insert(0, {
-                        "time": timestamp,
-                        "type": "Face Analytics",
-                        "detail": f"Recognized {gender}, ~{age}yo"
-                    })
                     
-                    cv2.putText(frame, f"{gender} {age}", (x, y+h+20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
+                    if match_name:
+                        detail = f"Match Found: {match_name} ({gender}, ~{age}yo)"
+                        analytics_state['event_logs'].insert(0, {
+                            "time": timestamp,
+                            "type": "Watchlist Alert",
+                            "detail": detail
+                        })
+                        log_event("Watchlist Alert", detail) # Persist to DB
+                        
+                        cv2.putText(frame, f"ALERT: {match_name}", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                    else:
+                        detail = f"Recognized {gender}, ~{age}yo"
+                        analytics_state['event_logs'].insert(0, {
+                            "time": timestamp,
+                            "type": "Face Analytics",
+                            "detail": detail
+                        })
+                        log_event("Face Analytics", detail) # Persist to DB
+                        
+                        cv2.putText(frame, f"{gender} {age}", (x, y+h+20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
+                        
                 except Exception as e:
                     cv2.putText(frame, "Face", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
             else:

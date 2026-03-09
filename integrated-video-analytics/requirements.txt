@@ -11,6 +11,9 @@ Pillow
 deepface
 tf-keras
 easyocr
+supervision
+fpdf2
+websockets
 # YOLOv5 requirements
 matplotlib>=3.3.0
 pyyaml>=5.3.1
