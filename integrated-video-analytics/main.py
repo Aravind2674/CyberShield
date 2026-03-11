@@ -185,12 +185,19 @@ def generate_frames(camera_id: str):
     stream = cameras[camera_id]
     pipeline = pipelines[camera_id]
     state = camera_states[camera_id]
+    
+    target_frame_time = 1.0 / 24.0  # Limit to 24 FPS to save GPU
 
     try:
         while stream.running:
+            start_time = time.time()
             success, frame = stream.read()
             if not success or frame is None:
-                break
+                if stream.is_live:
+                    time.sleep(0.01)
+                    continue
+                else:
+                    break
 
             state["is_processing"] = True
             processed_frame = pipeline.process_frame(frame, state)
@@ -202,6 +209,10 @@ def generate_frames(camera_id: str):
                 b"--frame\r\n"
                 b"Content-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
             )
+            
+            elapsed = time.time() - start_time
+            if elapsed < target_frame_time:
+                time.sleep(target_frame_time - elapsed)
     finally:
         state["is_processing"] = False
 

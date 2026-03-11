@@ -33,7 +33,7 @@ TARGET_CLASSES = {
 VEHICLE_CLASSES = {"car", "motorcycle", "bus", "truck"}
 DETECTION_CONFIDENCE = float(os.getenv("CYBERSHIELD_DETECT_CONFIDENCE", "0.35"))
 PLATE_CONFIDENCE = float(os.getenv("CYBERSHIELD_PLATE_CONFIDENCE", "0.35"))
-DETECTION_IMAGE_SIZE = int(os.getenv("CYBERSHIELD_DETECT_IMGSZ", "960"))
+DETECTION_IMAGE_SIZE = int(os.getenv("CYBERSHIELD_DETECT_IMGSZ", "640"))
 MIN_STABLE_FRAMES = int(os.getenv("CYBERSHIELD_MIN_STABLE_FRAMES", "3"))
 DETECTION_MODEL_NAME = os.getenv(
     "CYBERSHIELD_DETECT_MODEL",
@@ -509,6 +509,7 @@ class VideoPipeline:
                 imgsz=DETECTION_IMAGE_SIZE,
                 classes=list(TARGET_CLASSES.keys()),
                 device=self.device,
+                half=(str(self.device) != "cpu"),
                 verbose=False,
             )
 
