@@ -18,11 +18,13 @@ def test_database_records_are_searchable(tmp_path):
         database.upsert_face_record("cam_a", 11, "alice", "Woman", None, True)
 
         events = database.get_recent_events(camera_id="cam_a")
+        vehicles = database.get_vehicle_records(query="ABC", camera_id="cam_a")
         plates = database.get_plate_reads(query="ABC", camera_id="cam_a")
         faces = database.get_face_records(query="alice", camera_id="cam_a")
 
         assert len(events) == 1
         assert events[0]["camera_id"] == "cam_a"
+        assert vehicles[0]["plate_text"] == "ABC123"
         assert plates[0]["plate_text"] == "ABC123"
         assert faces[0]["identity"] == "alice"
         assert faces[0]["watchlist_hit"] == 1

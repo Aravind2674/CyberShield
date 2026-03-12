@@ -9,9 +9,9 @@ numpy
 pandas
 requests
 Pillow
-deepface
+insightface
 tf-keras
-easyocr
+onnxruntime
 supervision
 fpdf2
 websockets

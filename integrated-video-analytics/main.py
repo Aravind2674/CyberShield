@@ -1,32 +1,74 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
+import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict
 
-import cv2
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from fpdf import FPDF
 
-from camera import CameraStream
-from database import get_face_records, get_plate_reads, get_recent_events
-from pipeline import VideoPipeline
+from database import get_face_records, get_plate_reads, get_recent_events, get_vehicle_records
+from pipeline import warm_shared_resources
+from runtime import CameraRuntime
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "uploads"
-REPORT_PATH = BASE_DIR / "analytics_report.pdf"
 
-cameras: Dict[str, CameraStream] = {}
-pipelines: Dict[str, VideoPipeline] = {}
-camera_states: Dict[str, dict] = {}
-camera_sources: Dict[str, str] = {}
+runtimes: Dict[str, CameraRuntime] = {}
+VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".m4v", ".webm", ".ts"}
+UPLOAD_CHUNK_SIZE = 1024 * 1024
+
+
+def env_flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def parse_size_bytes(value: str | None, default: int) -> int:
+    if value is None:
+        return default
+    normalized = value.strip().upper()
+    if not normalized:
+        return default
+    suffixes = {
+        "GB": 1024 * 1024 * 1024,
+        "MB": 1024 * 1024,
+        "KB": 1024,
+        "B": 1,
+    }
+    for suffix, multiplier in suffixes.items():
+        if normalized.endswith(suffix):
+            number = normalized[: -len(suffix)].strip()
+            try:
+                return max(int(float(number) * multiplier), 1)
+            except ValueError:
+                return default
+    try:
+        return max(int(normalized), 1)
+    except ValueError:
+        return default
+
+
+def sanitize_upload_name(filename: str | None) -> str:
+    original = Path(filename or "video.mp4").name
+    suffix = Path(original).suffix.lower() or ".mp4"
+    stem = Path(original).stem
+    safe_stem = "".join(ch if ch.isalnum() or ch in {"_", "-", "."} else "_" for ch in stem).strip("._")
+    return f"{safe_stem or 'video'}{suffix}"
+
+
+MAX_UPLOAD_SIZE_BYTES = parse_size_bytes(os.getenv("CYBERSHIELD_MAX_UPLOAD_SIZE"), 512 * 1024 * 1024)
+PRELOAD_SHARED_MODELS = env_flag("CYBERSHIELD_PRELOAD_MODELS", True)
+WS_UPDATE_INTERVAL_SECONDS = max(float(os.getenv("CYBERSHIELD_WS_INTERVAL", "1.0")), 0.25)
 
 
 def sanitize_camera_id(value: str) -> str:
@@ -36,9 +78,31 @@ def sanitize_camera_id(value: str) -> str:
 
 def next_camera_id() -> str:
     index = 1
-    while f"camera_{index}" in cameras:
+    while f"camera_{index}" in runtimes:
         index += 1
     return f"camera_{index}"
+
+
+async def persist_upload(file: UploadFile, target_path: Path) -> None:
+    total_written = 0
+    try:
+        with target_path.open("wb") as output_file:
+            while True:
+                chunk = await file.read(UPLOAD_CHUNK_SIZE)
+                if not chunk:
+                    break
+                total_written += len(chunk)
+                if total_written > MAX_UPLOAD_SIZE_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Upload exceeds the {MAX_UPLOAD_SIZE_BYTES} byte limit.",
+                    )
+                output_file.write(chunk)
+    except Exception:
+        target_path.unlink(missing_ok=True)
+        raise
+    finally:
+        await file.close()
 
 
 def get_initial_state(camera_id: str, source: str = "") -> dict:
@@ -56,53 +120,48 @@ def get_initial_state(camera_id: str, source: str = "") -> dict:
         "faces_detected": 0,
         "plates_detected": 0,
         "zone_count": 0,
+        "recent_vehicles": [],
         "recent_plates": [],
         "recent_faces": [],
         "event_logs": [],
         "last_updated": None,
         "is_processing": False,
+        "stream_fps": 0.0,
+        "analytics_fps": 0.0,
+        "inference_latency_ms": 0.0,
+        "plate_detector_ready": False,
+        "detector_model": None,
+        "plate_model": None,
+        "device": "cpu",
     }
 
 
 def get_state_snapshot(camera_id: str) -> dict:
-    if camera_id not in camera_states:
+    if camera_id not in runtimes:
         return get_initial_state(camera_id)
-
-    pipeline = pipelines.get(camera_id)
-    state = camera_states[camera_id]
-    if pipeline is None:
-        return state.copy()
-    return pipeline.snapshot_state(state)
+    return runtimes[camera_id].snapshot_state()
 
 
 def release_camera(camera_id: str, drop_state: bool = False) -> None:
-    stream = cameras.pop(camera_id, None)
-    if stream is not None:
-        stream.release()
-
-    pipeline = pipelines.pop(camera_id, None)
-    if pipeline is not None:
-        pipeline.shutdown()
-
-    camera_sources.pop(camera_id, None)
-    if drop_state:
-        camera_states.pop(camera_id, None)
+    runtime = runtimes.pop(camera_id, None)
+    if runtime is not None:
+        runtime.release()
 
 
 def mount_camera(camera_id: str, source: str) -> None:
     release_camera(camera_id)
-    cameras[camera_id] = CameraStream(source)
-    pipelines[camera_id] = VideoPipeline(camera_id)
-    camera_states[camera_id] = get_initial_state(camera_id, str(source))
-    camera_sources[camera_id] = str(source)
+    state = get_initial_state(camera_id, str(source))
+    runtimes[camera_id] = CameraRuntime(camera_id, str(source), state)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     UPLOAD_DIR.mkdir(exist_ok=True)
     (BASE_DIR / "watchlist").mkdir(exist_ok=True)
+    if PRELOAD_SHARED_MODELS:
+        await asyncio.to_thread(warm_shared_resources)
     yield
-    for camera_id in list(cameras.keys()):
+    for camera_id in list(runtimes.keys()):
         release_camera(camera_id, drop_state=False)
 
 
@@ -118,6 +177,23 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def enforce_upload_limits(request: Request, call_next):
+    if request.url.path == "/api/video/upload":
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                announced_size = int(content_length)
+            except ValueError:
+                return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length header."})
+            if announced_size > MAX_UPLOAD_SIZE_BYTES:
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": f"Upload exceeds the {MAX_UPLOAD_SIZE_BYTES} byte limit."},
+                )
+    return await call_next(request)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def read_dashboard(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -129,10 +205,10 @@ async def list_cameras():
         "cameras": [
             {
                 "camera_id": camera_id,
-                "source": camera_sources.get(camera_id, ""),
-                "running": cameras[camera_id].running,
+                "source": runtimes[camera_id].source,
+                "running": runtimes[camera_id].running,
             }
-            for camera_id in cameras
+            for camera_id in runtimes
         ]
     }
 
@@ -149,20 +225,26 @@ async def add_camera(camera_id: str, source: str):
 
 @app.delete("/api/cameras/{camera_id}")
 async def remove_camera(camera_id: str):
-    if camera_id not in cameras:
+    if camera_id not in runtimes:
         raise HTTPException(status_code=404, detail="Camera not found")
     release_camera(camera_id, drop_state=True)
     return {"status": "success", "camera_id": camera_id}
 
 
 @app.post("/api/video/upload")
-async def upload_video(file: UploadFile = File(...), camera_id: str | None = None):
+async def upload_video(request: Request, file: UploadFile = File(...), camera_id: str | None = None):
+    if camera_id is None:
+        form = await request.form()
+        raw_camera_id = form.get("camera_id")
+        if isinstance(raw_camera_id, str) and raw_camera_id.strip():
+            camera_id = raw_camera_id
     camera_id = sanitize_camera_id(camera_id) if camera_id else next_camera_id()
-    safe_name = Path(file.filename or "video.mp4").name
+    safe_name = sanitize_upload_name(file.filename)
+    if Path(safe_name).suffix.lower() not in VIDEO_EXTENSIONS:
+        raise HTTPException(status_code=415, detail="Unsupported video format.")
     target_path = UPLOAD_DIR / f"{camera_id}_{int(time.time())}_{safe_name}"
 
-    with target_path.open("wb") as output_file:
-        shutil.copyfileobj(file.file, output_file)
+    await persist_upload(file, target_path)
 
     try:
         mount_camera(camera_id, str(target_path))
@@ -179,49 +261,17 @@ async def upload_video(file: UploadFile = File(...), camera_id: str | None = Non
 
 
 def generate_frames(camera_id: str):
-    if camera_id not in cameras:
+    runtime = runtimes.get(camera_id)
+    if runtime is None:
         return
-
-    stream = cameras[camera_id]
-    pipeline = pipelines[camera_id]
-    state = camera_states[camera_id]
-    
-    target_frame_time = 1.0 / 24.0  # Limit to 24 FPS to save GPU
-
-    try:
-        while stream.running:
-            start_time = time.time()
-            success, frame = stream.read()
-            if not success or frame is None:
-                if stream.is_live:
-                    time.sleep(0.01)
-                    continue
-                else:
-                    break
-
-            state["is_processing"] = True
-            processed_frame = pipeline.process_frame(frame, state)
-            ok, buffer = cv2.imencode(".jpg", processed_frame)
-            if not ok:
-                continue
-
-            yield (
-                b"--frame\r\n"
-                b"Content-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
-            )
-            
-            elapsed = time.time() - start_time
-            if elapsed < target_frame_time:
-                time.sleep(target_frame_time - elapsed)
-    finally:
-        state["is_processing"] = False
+    yield from runtime.frame_generator()
 
 
 @app.get("/api/video/stream")
 def video_feed_default():
-    if not cameras:
+    if not runtimes:
         raise HTTPException(status_code=404, detail="No camera available")
-    camera_id = next(iter(cameras.keys()))
+    camera_id = next(iter(runtimes.keys()))
     return StreamingResponse(
         generate_frames(camera_id),
         media_type="multipart/x-mixed-replace; boundary=frame",
@@ -230,7 +280,7 @@ def video_feed_default():
 
 @app.get("/api/video/stream/{camera_id}")
 def video_feed(camera_id: str):
-    if camera_id not in cameras:
+    if camera_id not in runtimes:
         raise HTTPException(status_code=404, detail="Camera not found")
     return StreamingResponse(
         generate_frames(camera_id),
@@ -253,6 +303,11 @@ def get_plate_history(limit: int = 25, query: str | None = None, camera_id: str 
     return {"records": get_plate_reads(limit=limit, query=query, camera_id=camera_id)}
 
 
+@app.get("/api/records/vehicles")
+def get_vehicle_history(limit: int = 25, query: str | None = None, camera_id: str | None = None):
+    return {"records": get_vehicle_records(limit=limit, query=query, camera_id=camera_id)}
+
+
 @app.get("/api/records/faces")
 def get_face_history(limit: int = 25, query: str | None = None, camera_id: str | None = None):
     return {"records": get_face_records(limit=limit, query=query, camera_id=camera_id)}
@@ -264,7 +319,7 @@ async def websocket_endpoint(websocket: WebSocket, camera_id: str):
     try:
         while True:
             await websocket.send_json(get_state_snapshot(camera_id))
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(WS_UPDATE_INTERVAL_SECONDS)
     except WebSocketDisconnect:
         return
 
@@ -272,6 +327,7 @@ async def websocket_endpoint(websocket: WebSocket, camera_id: str):
 @app.get("/api/reports/download")
 async def download_report(camera_id: str):
     state = get_state_snapshot(camera_id)
+    vehicle_records = get_vehicle_records(limit=10, camera_id=camera_id)
     plate_records = get_plate_reads(limit=10, camera_id=camera_id)
     face_records = get_face_records(limit=10, camera_id=camera_id)
 
@@ -294,6 +350,10 @@ async def download_report(camera_id: str):
     pdf.cell(190, 8, txt=f"Faces analyzed: {state.get('faces_detected', 0)}", ln=1)
     pdf.cell(190, 8, txt=f"Plates logged: {state.get('plates_detected', 0)}", ln=1)
     pdf.cell(190, 8, txt=f"Zone occupancy: {state.get('zone_count', 0)}", ln=1)
+    pdf.cell(190, 8, txt=f"Output stream FPS: {state.get('stream_fps', 0.0)}", ln=1)
+    pdf.cell(190, 8, txt=f"Analytics FPS: {state.get('analytics_fps', 0.0)}", ln=1)
+    pdf.cell(190, 8, txt=f"Inference latency: {state.get('inference_latency_ms', 0.0)} ms", ln=1)
+    pdf.cell(190, 8, txt=f"Device: {state.get('device', 'cpu')}", ln=1)
     pdf.ln(4)
 
     pdf.set_font("Arial", size=12)
@@ -308,6 +368,22 @@ async def download_report(camera_id: str):
     pdf.set_font("Arial", size=11)
     for gender, count in state.get("gender_stats", {}).items():
         pdf.cell(190, 7, txt=f"{gender}: {count}", ln=1)
+
+    if vehicle_records:
+        pdf.ln(4)
+        pdf.set_font("Arial", size=12)
+        pdf.cell(190, 8, txt="Recent vehicle records", ln=1)
+        pdf.set_font("Arial", size=10)
+        for record in vehicle_records:
+            plate_value = record["plate_text"] or "Plate pending"
+            pdf.multi_cell(
+                190,
+                6,
+                txt=(
+                    f"tracker #{record['tracker_id']} | {record['vehicle_type']} | {plate_value} | "
+                    f"first seen {record['first_seen']} | last seen {record['last_seen']}"
+                ),
+            )
 
     if plate_records:
         pdf.ln(4)
@@ -341,11 +417,17 @@ async def download_report(camera_id: str):
                 ),
             )
 
-    pdf.output(str(REPORT_PATH))
-    return FileResponse(
-        path=str(REPORT_PATH),
-        filename=f"CyberShield_{camera_id}_Analytics_Report.pdf",
+    payload = pdf.output(dest="S")
+    if isinstance(payload, str):
+        payload = payload.encode("latin-1")
+    elif isinstance(payload, bytearray):
+        payload = bytes(payload)
+    return Response(
+        content=payload,
         media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="CyberShield_{camera_id}_Analytics_Report.pdf"'
+        },
     )
 
 

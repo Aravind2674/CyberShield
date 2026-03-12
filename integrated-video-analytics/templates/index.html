@@ -229,6 +229,37 @@
                         </div>
                     </div>
                 </div>
+                <div class="glass-panel rounded-[1.4rem] p-5">
+                    <div class="mb-4 flex items-start justify-between gap-3">
+                        <div>
+                            <h3 class="display-font text-lg font-bold text-white">Pipeline Health</h3>
+                            <p class="text-sm text-slate-400">Live runtime visibility for streaming, inference and detector readiness</p>
+                        </div>
+                        <span id="detectorReadyBadge" class="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-300">Booting</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                        <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Stream FPS</p>
+                            <p id="streamFps" class="mt-2 text-2xl font-semibold text-blue-300">0.0</p>
+                        </div>
+                        <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Analytics FPS</p>
+                            <p id="analyticsFps" class="mt-2 text-2xl font-semibold text-cyan-300">0.0</p>
+                        </div>
+                        <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Inference Latency</p>
+                            <p id="inferenceLatency" class="mt-2 text-2xl font-semibold text-amber-300">0 ms</p>
+                        </div>
+                        <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Runtime Device</p>
+                            <p id="runtimeDevice" class="mt-2 text-2xl font-semibold text-emerald-300">cpu</p>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-sm text-slate-400">
+                        Plate detector status:
+                        <span id="plateModelStatus" class="text-slate-200">Waiting for model initialization</span>
+                    </div>
+                </div>
                 <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     <div class="glass-panel rounded-[1.4rem] p-5">
                         <div class="mb-4">
@@ -274,6 +305,17 @@
                         <div id="faceRecords" class="table-shell text-sm text-slate-300"></div>
                     </div>
                 </div>
+
+                <div class="glass-panel rounded-[1.4rem] p-5">
+                    <div class="mb-4 flex items-start justify-between gap-3">
+                        <div>
+                            <h3 class="display-font text-lg font-bold text-white">Vehicle Records</h3>
+                            <p class="text-sm text-slate-400">Searchable tracker, vehicle class and plate-linked records</p>
+                        </div>
+                        <input id="vehicleSearch" type="text" placeholder="Search tracker, plate, type..." class="w-56 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none">
+                    </div>
+                    <div id="vehicleRecords" class="table-shell text-sm text-slate-300"></div>
+                </div>
             </div>
 
             <aside class="glass-panel rounded-[1.4rem] xl:col-span-4 flex max-h-[1200px] flex-col overflow-hidden">
@@ -315,6 +357,7 @@
                 }]
             },
             options: {
+                animation: false,
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: {
@@ -335,6 +378,7 @@
                 }]
             },
             options: {
+                animation: false,
                 maintainAspectRatio: false,
                 cutout: '68%',
                 plugins: { legend: { position: 'right' } }
@@ -346,7 +390,11 @@
         let isSearchingLogs = false;
         let isSearchingPlates = false;
         let isSearchingFaces = false;
+        let isSearchingVehicles = false;
         let lastLiveLogs = [];
+        let lastLiveLogSignature = '';
+        let lastVehicleChartData = [0, 0, 0, 0];
+        let lastGenderChartData = [0, 0, 0];
 
         const statusColor = document.getElementById('statusIndicatorColor');
         const statusPing = document.getElementById('statusIndicatorPing');
@@ -386,6 +434,23 @@
                     <p class="mt-2 text-sm text-slate-500">${detail}</p>
                 </div>
             `;
+        }
+
+        function arraysEqual(left, right) {
+            if (left.length !== right.length) return false;
+            return left.every((value, index) => value === right[index]);
+        }
+
+        function getLogSignature(logs) {
+            if (!logs || logs.length === 0) return '0';
+            const first = logs[0];
+            return `${logs.length}:${first.time || ''}:${first.type || ''}:${first.detail || ''}`;
+        }
+
+        function syncLiveLogs(logs) {
+            lastLiveLogs = logs || [];
+            lastLiveLogSignature = getLogSignature(lastLiveLogs);
+            renderLogs(lastLiveLogs);
         }
 
         function renderLogs(logs) {
@@ -456,6 +521,28 @@
             }).join('');
         }
 
+        function renderVehicleRecords(records) {
+            const container = document.getElementById('vehicleRecords');
+            if (!records || records.length === 0) {
+                renderEmptyState('vehicleRecords', 'No vehicle records', 'Tracked vehicles and linked plates will appear here as the session progresses.');
+                return;
+            }
+            container.innerHTML = records.map(record => {
+                const plate = record.plate_text || 'Plate pending';
+                const lastSeen = record.last_seen || record.time || 'N/A';
+                return `
+                    <div class="record-row">
+                        <div class="flex items-center justify-between gap-3">
+                            <span class="display-font text-base font-bold text-white">#${record.tracker_id}</span>
+                            <span class="rounded-full border border-blue-400/20 bg-blue-400/10 px-2 py-1 text-xs text-blue-200">${record.vehicle_type}</span>
+                        </div>
+                        <div class="text-sm text-slate-300">${plate}</div>
+                        <div class="text-xs text-slate-400">Last seen: ${lastSeen}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
         async function fetchJSON(url) {
             const response = await fetch(url);
             if (!response.ok) {
@@ -502,6 +589,15 @@
             renderFaceRecords(data.records);
         }
 
+        async function fetchVehicleHistory(query = '') {
+            const params = new URLSearchParams();
+            params.set('limit', '25');
+            if (query) params.set('query', query);
+            if (activeCamera) params.set('camera_id', activeCamera);
+            const data = await fetchJSON(`/api/records/vehicles?${params.toString()}`);
+            renderVehicleRecords(data.records);
+        }
+
         function updateDashboard(state) {
             document.getElementById('vehicleCount').textContent = state.vehicle_count || 0;
             document.getElementById('vehicleTotalCount').textContent = state.vehicle_total_count || 0;
@@ -509,28 +605,54 @@
             document.getElementById('crowdDensity').textContent = state.crowd_density || 'Low';
             document.getElementById('faceCount').textContent = state.faces_detected || 0;
             document.getElementById('plateCount').textContent = state.plates_detected || 0;
-            vehicleChart.data.datasets[0].data = [
+            document.getElementById('streamFps').textContent = (state.stream_fps || 0).toFixed(1);
+            document.getElementById('analyticsFps').textContent = (state.analytics_fps || 0).toFixed(1);
+            document.getElementById('inferenceLatency').textContent = `${Math.round(state.inference_latency_ms || 0)} ms`;
+            document.getElementById('runtimeDevice').textContent = state.device || 'cpu';
+            document.getElementById('plateModelStatus').textContent = state.plate_detector_ready
+                ? `Ready (${state.plate_model || 'model'})`
+                : `Unavailable (${state.plate_model || 'not configured'})`;
+            const detectorBadge = document.getElementById('detectorReadyBadge');
+            detectorBadge.textContent = state.plate_detector_ready ? 'Plate Detector Ready' : 'OCR Fallback Mode';
+            detectorBadge.className = state.plate_detector_ready
+                ? 'rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200'
+                : 'rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs text-amber-200';
+            const vehicleData = [
                 state.vehicle_types?.car || 0,
                 state.vehicle_types?.motorcycle || 0,
                 state.vehicle_types?.bus || 0,
                 state.vehicle_types?.truck || 0
             ];
-            vehicleChart.update();
-            genderChart.data.datasets[0].data = [
+            if (!arraysEqual(lastVehicleChartData, vehicleData)) {
+                lastVehicleChartData = vehicleData;
+                vehicleChart.data.datasets[0].data = vehicleData;
+                vehicleChart.update('none');
+            }
+            const genderData = [
                 state.gender_stats?.Man || 0,
                 state.gender_stats?.Woman || 0,
                 state.gender_stats?.Unknown || 0
             ];
-            genderChart.update();
+            if (!arraysEqual(lastGenderChartData, genderData)) {
+                lastGenderChartData = genderData;
+                genderChart.data.datasets[0].data = genderData;
+                genderChart.update('none');
+            }
             if (!isSearchingPlates) {
                 renderPlateRecords(state.recent_plates || []);
             }
             if (!isSearchingFaces) {
                 renderFaceRecords(state.recent_faces || []);
             }
-            if (!isSearchingLogs && JSON.stringify(lastLiveLogs) !== JSON.stringify(state.event_logs || [])) {
-                lastLiveLogs = state.event_logs || [];
-                renderLogs(lastLiveLogs);
+            if (!isSearchingVehicles) {
+                renderVehicleRecords(state.recent_vehicles || []);
+            }
+            if (!isSearchingLogs) {
+                const nextLogs = state.event_logs || [];
+                const nextSignature = getLogSignature(nextLogs);
+                if (nextSignature !== lastLiveLogSignature) {
+                    syncLiveLogs(nextLogs);
+                }
             }
         }
 
@@ -552,14 +674,18 @@
 
         function switchCamera(cameraId) {
             activeCamera = cameraId;
+            syncLiveLogs([]);
             updateReportLink();
             connectWebSocket(cameraId);
             document.getElementById('videoPlayer').src = `/api/video/stream/${cameraId}`;
             document.getElementById('videoPlayer').classList.remove('hidden');
             document.getElementById('videoPlaceholder').classList.add('hidden');
-            fetchHistoricalLogs(document.getElementById('logSearch').value.trim()).catch(console.error);
+            if (document.getElementById('logSearch').value.trim()) {
+                fetchHistoricalLogs(document.getElementById('logSearch').value.trim()).catch(console.error);
+            }
             fetchPlateHistory(document.getElementById('plateSearch').value.trim()).catch(console.error);
             fetchFaceHistory(document.getElementById('faceSearch').value.trim()).catch(console.error);
+            fetchVehicleHistory(document.getElementById('vehicleSearch').value.trim()).catch(console.error);
         }
 
         cameraSelector.addEventListener('change', event => {
@@ -620,6 +746,10 @@
             const query = event.target.value.trim();
             isSearchingLogs = query.length > 0;
             clearTimeout(logTimeout);
+            if (!isSearchingLogs) {
+                syncLiveLogs(lastLiveLogs);
+                return;
+            }
             logTimeout = setTimeout(() => {
                 fetchHistoricalLogs(query).catch(console.error);
             }, 250);
@@ -645,8 +775,19 @@
             }, 250);
         });
 
+        let vehicleTimeout;
+        document.getElementById('vehicleSearch').addEventListener('input', event => {
+            const query = event.target.value.trim();
+            isSearchingVehicles = query.length > 0;
+            clearTimeout(vehicleTimeout);
+            vehicleTimeout = setTimeout(() => {
+                fetchVehicleHistory(query).catch(console.error);
+            }, 250);
+        });
+
         renderEmptyState('plateRecords', 'No plate records', 'Detected number plates will appear here and remain searchable.');
         renderEmptyState('faceRecords', 'No face records', 'Watchlist matches and face analytics results will appear here.');
+        renderEmptyState('vehicleRecords', 'No vehicle records', 'Tracked vehicles and linked plates will appear here as the session progresses.');
         updateReportLink();
         loadCameras();
     </script>

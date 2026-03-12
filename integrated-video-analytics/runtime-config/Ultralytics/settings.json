@@ -1,0 +1,21 @@
+{
+  "settings_version": "0.0.6",
+  "datasets_dir": "C:\\Users\\aravi\\OneDrive\\Desktop\\datasets",
+  "weights_dir": "C:\\Users\\aravi\\OneDrive\\Desktop\\Cybershield\\weights",
+  "runs_dir": "C:\\Users\\aravi\\OneDrive\\Desktop\\Cybershield\\runs",
+  "uuid": "6e7678eb2f996d666ae8acad55a821cb963c528b77137361e5c074b4ca1743ae",
+  "sync": true,
+  "api_key": "",
+  "openai_api_key": "",
+  "clearml": true,
+  "comet": true,
+  "dvc": true,
+  "hub": true,
+  "mlflow": true,
+  "neptune": true,
+  "raytune": true,
+  "tensorboard": false,
+  "wandb": false,
+  "vscode_msg": true,
+  "openvino_msg": true
+}
