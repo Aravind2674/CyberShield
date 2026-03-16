@@ -1,0 +1,4 @@
+# Optional face analytics dependencies.
+# Use Python 3.11 for best compatibility on Windows.
+insightface; python_version < "3.12"
+tf-keras; python_version < "3.12"

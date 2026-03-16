@@ -29,6 +29,16 @@ python main.py
 
 Open `http://localhost:8080`.
 
+### Optional face analytics dependencies
+
+`insightface` and `tf-keras` are optional and may not provide wheels on newer Python releases.
+
+If you want watchlist face matching, use Python 3.11 and install:
+
+```bash
+pip install -r requirements-face.txt
+```
+
 ## Notes
 
 - Uploaded videos are stored in `uploads/`.

@@ -199,6 +199,12 @@ async def read_dashboard(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> Response:
+    # Return an empty icon response to silence automatic browser favicon lookups.
+    return Response(status_code=204)
+
+
 @app.get("/api/cameras")
 async def list_cameras():
     return {

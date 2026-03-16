@@ -3,14 +3,13 @@ httpx
 uvicorn
 python-multipart
 opencv-python
+easyocr
 torch
 torchvision
 numpy
 pandas
 requests
 Pillow
-insightface
-tf-keras
 onnxruntime
 supervision
 fpdf2

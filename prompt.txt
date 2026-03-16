@@ -1,0 +1,164 @@
+Project context for AI review and change suggestions
+
+You are helping me improve an existing Python project called CyberShield.
+Please read this context carefully and suggest concrete, prioritized changes.
+
+Primary goal
+- Improve reliability, performance, maintainability, and security of the integrated video analytics system.
+- Keep current user-facing features working unless there is a strong reason to change behavior.
+
+Repository layout
+- Root
+  - README.md
+  - analytics.db
+  - yolov5s.pt
+  - integrated-video-analytics/ (active app)
+  - uploads/
+- integrated-video-analytics/
+  - main.py
+  - runtime.py
+  - pipeline.py
+  - camera.py
+  - database.py
+  - templates/index.html
+  - tests/test_camera.py
+  - tests/test_database.py
+  - tests/test_main.py
+  - tests/test_pipeline.py
+  - requirements.txt
+  - README.md
+  - analytics.db
+  - uploads/
+  - watchlist/
+  - runtime-config/Ultralytics/
+  - tools/python311-embed/
+
+What the system does
+- FastAPI web app with a live dashboard.
+- Multi-camera runtime management.
+- Video analytics pipeline:
+  - Object detection for person + vehicles.
+  - Tracking with ByteTrack.
+  - ANPR/license plate detection + recognition.
+  - Face analytics and watchlist matching.
+  - Crowd density estimate.
+- Stores events/metrics/records in SQLite.
+- Streams MJPEG video and sends analytics state over WebSocket.
+- Provides searchable logs/records and PDF report export.
+
+Key backend architecture
+
+1) API layer (main.py)
+- Uses FastAPI + Jinja2Templates.
+- Keeps in-memory camera runtimes in a global dict keyed by camera_id.
+- Important endpoints:
+  - GET /
+  - GET /api/cameras
+  - POST /api/cameras/add?camera_id=...&source=...
+  - DELETE /api/cameras/{camera_id}
+  - POST /api/video/upload (multipart file + optional camera_id)
+  - GET /api/video/stream
+  - GET /api/video/stream/{camera_id}
+  - GET /api/analytics/status?camera_id=...
+  - GET /api/logs/history
+  - GET /api/records/plates
+  - GET /api/records/vehicles
+  - GET /api/records/faces
+  - WS /ws/analytics/{camera_id}
+  - GET /api/reports/download?camera_id=...
+- Upload handling:
+  - File extension allow-list.
+  - Max upload size from env CYBERSHIELD_MAX_UPLOAD_SIZE (default 512MB).
+  - Streaming write in chunks.
+
+2) Camera runtime loop (runtime.py)
+- CameraRuntime owns one source:
+  - CameraStream for frame read.
+  - VideoPipeline for analytics.
+- Separate concerns:
+  - output stream FPS loop
+  - analytics background executor (single worker)
+  - task refresh cadence
+- Encodes output as JPEG MJPEG stream.
+- Updates shared state with stream_fps, analytics_fps, inference latency, model/device info.
+
+3) Source ingestion (camera.py)
+- CameraStream handles:
+  - numeric webcam source ("0" -> 0)
+  - file source
+  - URL/RTSP live streams
+- Live sources run a background read thread and keep latest frame.
+- File sources read sequentially without skipping first frame.
+
+4) Analytics core (pipeline.py)
+- Detection:
+  - Ultralytics YOLO model, target classes person/car/motorcycle/bus/truck.
+  - ByteTrack for persistent tracker_id.
+- ANPR:
+  - Optional local plate detector model (YOLO), fallback region heuristics.
+  - OCR/image preprocessing variants for plate extraction.
+  - Plate Recognizer HTTP API call with retries/backoff and MMC extraction.
+  - Voting/confirmation strategy for stable plate text and MMC attributes.
+- Face:
+  - InsightFace FaceAnalysis (ArcFace buffalo_l) if available.
+  - Watchlist matching using embedding distance.
+  - Non-watchlist faces are blurred in rendered output.
+- State and concurrency:
+  - Multiple thread pools (plate, face, DB).
+  - Locks and TTL caches for track state and dedupe.
+  - Periodic metric writes.
+
+5) Persistence layer (database.py)
+- SQLite database path defaults to integrated-video-analytics/analytics.db.
+- Tables:
+  - events(camera_id, timestamp, event_type, detail)
+  - metrics(camera_id, timestamp, vehicle_count, people_count, zone_count)
+  - vehicle_records(camera_id, tracker_id, vehicle_type, plate_text, first_seen, last_seen)
+  - plate_reads(camera_id, tracker_id, plate_text, vehicle_type, confidence, first_seen, last_seen)
+  - face_records(camera_id, tracker_id, identity, gender, age, watchlist_hit, first_seen, last_seen)
+- Includes indexes and migration logic for legacy event schema (details -> detail).
+- Uses write retries for busy/locked DB.
+
+6) Frontend (templates/index.html)
+- Tailwind + Chart.js single-page dashboard.
+- Features:
+  - Add source modal (camera or upload).
+  - Camera selector.
+  - Live MJPEG player.
+  - KPI cards and charts.
+  - Searchable logs, ANPR records, face records, vehicle records.
+  - Pipeline health indicators.
+  - Report download button.
+- Receives live state via WebSocket and updates UI continuously.
+
+Dependencies (requirements.txt)
+- fastapi, uvicorn, python-multipart
+- opencv-python, torch, torchvision, ultralytics
+- insightface, onnxruntime, tf-keras
+- supervision, numpy, pandas, scipy
+- requests, Pillow, fpdf2
+- matplotlib, seaborn, tqdm, psutil
+- pytest, websockets, etc.
+
+Environment configuration currently used in code
+- Many CYBERSHIELD_* env vars control confidence thresholds, image sizes, scan intervals, queue limits, stream FPS, upload size, preload behavior, etc.
+- Detector model selection is dynamic based on CUDA availability and local files.
+
+Current tests
+- tests/test_camera.py
+  - source normalization and first-frame behavior for file streams.
+- tests/test_database.py
+  - searchability, upsert behavior, and legacy schema compatibility.
+- tests/test_main.py
+  - parse_size_bytes and sanitize_upload_name.
+- tests/test_pipeline.py
+  - model path resolver, plate normalization, cache trimming, env float parsing behavior.
+
+Notable implementation details and possible risk areas
+- Global in-memory runtime registry in API process.
+- Some heavy model loading and thread-pool concurrency.
+- Hardcoded default token value for PLATE_RECOGNIZER_API_TOKEN in code.
+- Open CORS (allow_origins=["*"]).
+- Potential mismatch between test expectation and implementation for invalid env float parsing behavior.
+- Binary/artifact files are in repository (DB files, model files, uploads, embedded Python runtime, debug image).
+
